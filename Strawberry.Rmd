@@ -1,0 +1,145 @@
+---
+title: "Strawberry"
+author: "Zhenwei Weng"
+date: "2024-10-11"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(stringr)
+straw <- read.csv("strawberries25_v3.csv", header = TRUE)
+head(straw)
+
+#Loads R packages for data manipulation, reads the "strawberries25_v3.csv" file into 'straw'.
+```
+
+
+```{r}
+drop_col <- function(df) {
+  df %>% select_if(~ length(unique(.)) > 1)
+}
+straw_clean <- drop_col(straw)
+state <- straw_clean %>%
+  group_by(State) %>%
+  count()
+count(state)
+sum(state$n) == dim(straw_clean)[1]
+
+
+#I defines a function 'drop_col' to remove columns in a dataframe that have only one unique value.
+#Then applies this function to 'straw' to create a cleaned dataframe 'straw_clean'. 
+#After that, I group 'straw_clean' by the 'State' column and counts each 
+#group, storing the results in 'state'. 
+#Finally, I counts the groups in 'state' and verifies if the total count in 'state' 
+#equals the number of rows in 'straw_clean'.
+```
+
+
+
+```{r}
+summary <- straw_clean %>%
+  group_by(State) %>% 
+  summarize(count = n()) 
+print(summary)
+California_census <- straw_clean %>%
+  filter(State == "CALIFORNIA", Program == "CENSUS") %>%
+  select(Year, `Data.Item`, Value)
+head(California_census)
+California_survey <- straw_clean %>%
+  filter(State == "CALIFORNIA", Program == "SURVEY") %>%
+  select(Year, Period, `Data.Item`, Value)
+
+
+#First, I group the 'straw_clean' dataframe by 'State' and 
+#calculate the count of records per group, storing the results in 'summary'. 
+#Then, I filter records where 'State' is "California"
+#and 'Program' is "CENSUS", selecting the 'Year', 'Data.Item', and 'Value' columns,
+#with the results stored in 'California_census'.
+#Lastly, I similarly filter records for "California" under the 'Program' "SURVEY",
+#selecting the 'Year', 'Period', 'Data.Item',
+#and 'Value' columns, and store the results in 'California_survey'.
+```
+
+```{r}
+process_line <- function(line) {
+  line <- as.character(line)
+  line <- gsub("[–—-]", "-", line)
+  parts <- unlist(strsplit(line, " - "))
+  fruit <- "Strawberries"
+  if (length(parts) == 2) {
+    item_metric <- unlist(strsplit(parts[2], ","))
+    category <- trimws(gsub("^STRAWBERRIES,? ?", "", parts[1]))
+    if (category == "") {
+      category <- NA
+    }
+    item <- trimws(ifelse(length(item_metric) > 0, item_metric[1], "N/A"))
+    metric <- trimws(ifelse(length(item_metric) > 1, item_metric[2], "N/A"))
+  } else if (length(parts) == 3) {
+    category <- trimws(gsub("^STRAWBERRIES,? ?", "", parts[2]))
+    if (category == "") {
+      category <- NA
+    }
+    item_metric <- unlist(strsplit(parts[3], ","))
+    item <- trimws(ifelse(length(item_metric) > 0, item_metric[1], "N/A"))
+    metric <- trimws(ifelse(length(item_metric) > 1, item_metric[2], "N/A"))
+  } else {
+    category <- trimws(gsub("^STRAWBERRIES,? ?", "", parts[1]))
+    if (category == "") {
+      category <- NA
+    }
+    item <- "N/A"
+    metric <- "N/A"
+  }
+  return(list(Fruit = fruit, Category = category, Item = item, Metric = metric))
+}
+
+straw_clean <- cbind(straw_clean, do.call(rbind, lapply(straw_clean$Data.Item, function(x) {
+  as.data.frame(process_line(x), stringsAsFactors = FALSE)
+})))
+
+
+#I defined a function called 'process_line' to process strings, primarily to parse 
+#data items and metrics related to strawberries. The function starts by converting 
+#the input line into a character string, then replaces various types of dashes with 
+#a standard dash using regular expressions. It then splits the string by " - ", extracting
+#categories, items, and metrics. Different processes are applied based on the number
+#of parts split to ensure correct information extraction. Finally, this information 
+#is organized into a list and returned. Afterwards, I use 'lapply' to apply the 
+#'process_line' function to each item in 'straw_clean$Data.Item', combine the results
+#into data frames, and merge them back with the original dataframe 'straw_clean.'
+```
+
+
+```{r}
+dom_cate <- straw_clean %>%
+  group_by(Domain.Category) %>%
+  count()
+count(dom_cate)
+straw_clean <- straw_clean %>%
+  separate_wider_delim(cols = `Domain.Category`, delim = ": ",
+                       names = c("use", "details"), 
+                       too_many = "error", too_few = "align_start") %>%
+   mutate(
+    name = str_extract(details, "(?<=\\().*?(?=\\=)"),  
+    code = str_extract(details, "(?<=\\= ).*?(?=\\))") 
+  )
+straw_clean$use <- gsub("^CHEMICAL, ", "", straw_clean$use)
+straw_clean$Value <- as.numeric(as.character(straw_clean$Value))
+straw_clean$CV.... <- as.numeric(as.character(straw_clean$CV....))
+straw_clean <- straw_clean %>%
+  select(-Data.Item)
+head(straw_clean)
+
+
+#I grouped and counted 'straw_clean' by 'Domain.Category', then split this column 
+#into 'use' and 'details', extracting to create new 'name' and 'code' columns. I 
+#also cleaned the prefix from the 'use' column and converted 'Value' and 'CV....' 
+#to numeric types. Finally, I removed the 'Data.Item' column.
+#To here, I've already finish cleaning the data.
+```
